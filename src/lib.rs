@@ -15,56 +15,20 @@
 #![deny(warnings)]
 #![no_std]
 
-use core::ops;
+pub use mutex_trait::{prelude::*, Exclusive, Mutex};
+pub use embedded_time as time;
 
-/// Memory safe access to shared resources
-///
-/// In RTFM, locks are implemented as critical sections that prevent other tasks from *starting*.
-/// These critical sections are implemented by temporarily increasing the dynamic priority of the
-/// current context. Entering and leaving these critical sections is always done in bounded constant
-/// time (a few instructions in bare metal contexts).
-pub trait Mutex {
-    /// Data protected by the mutex
-    type T;
-
-    /// Creates a critical section and grants temporary access to the protected data
-    fn lock<R>(&mut self, f: impl FnOnce(&mut Self::T) -> R) -> R;
+/// A monotonic clock / counter
+pub trait Monotonic: time::Clock {
+    /// Resets the counter to *zero*
+    ///
+    /// # Safety
+    ///
+    /// This function will be called *exactly once* by the RTFM runtime after `#[init]` returns and
+    /// before tasks can start; this is also the case in multi-core applications. User code must
+    /// *never* call this function.
+    unsafe fn reset();
 }
 
-impl<'a, M> Mutex for &'a mut M
-where
-    M: Mutex,
-{
-    type T = M::T;
-
-    fn lock<R>(&mut self, f: impl FnOnce(&mut M::T) -> R) -> R {
-        M::lock(self, f)
-    }
-}
-
-/// Newtype over `&'a mut T` that implements the `Mutex` trait
-///
-/// The `Mutex` implementation for this type is a no-op: no critical section is created
-pub struct Exclusive<'a, T>(pub &'a mut T);
-
-impl<'a, T> Mutex for Exclusive<'a, T> {
-    type T = T;
-
-    fn lock<R>(&mut self, f: impl FnOnce(&mut T) -> R) -> R {
-        f(self.0)
-    }
-}
-
-impl<'a, T> ops::Deref for Exclusive<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &T {
-        self.0
-    }
-}
-
-impl<'a, T> ops::DerefMut for Exclusive<'a, T> {
-    fn deref_mut(&mut self) -> &mut T {
-        self.0
-    }
-}
+/// A marker trait that indicates that it is correct to use this type in multi-core context
+pub trait MultiCore {}
